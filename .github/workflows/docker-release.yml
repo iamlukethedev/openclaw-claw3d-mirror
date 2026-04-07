@@ -14,13 +14,17 @@ on:
       - "skills/**"
   workflow_dispatch:
     inputs:
+      source_ref:
+        description: Branch or ref to publish (defaults to refs/heads/main)
+        required: false
+        type: string
       tag:
         description: Existing release tag to backfill (for example v2026.3.22)
-        required: true
+        required: false
         type: string
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && format('docker-release-manual-{0}', inputs.tag) || format('docker-release-push-{0}', github.run_id) }}
+  group: ${{ github.event_name == 'workflow_dispatch' && format('docker-release-manual-{0}', inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || inputs.source_ref != '' && inputs.source_ref || 'refs/heads/main') || format('docker-release-push-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
@@ -30,7 +34,7 @@ env:
 
 jobs:
   validate_manual_backfill:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -52,7 +56,7 @@ jobs:
           fetch-depth: 0
 
   approve_manual_backfill:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
     needs: validate_manual_backfill
     # WARNING: KEEP MANUAL BACKFILLS GATED BY THE docker-release ENVIRONMENT.
     runs-on: ubuntu-24.04
@@ -68,7 +72,7 @@ jobs:
   # Build amd64 images (default + slim share the build stage cache)
   build-amd64:
     needs: [approve_manual_backfill]
-    if: ${{ always() && (github.event_name != 'workflow_dispatch' || needs.approve_manual_backfill.result == 'success') }}
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.tag == '' || needs.approve_manual_backfill.result == 'success') }}
     # WARNING: DO NOT REVERT THIS TO A BLACKSMITH RUNNER WITHOUT RE-VALIDATING TAG BACKFILLS.
     runs-on: ubuntu-24.04
     permissions:
@@ -81,7 +85,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || inputs.source_ref != '' && inputs.source_ref || 'refs/heads/main') || github.ref }}
           fetch-depth: 0
 
       - name: Set up Docker Builder
@@ -99,7 +103,7 @@ jobs:
         shell: bash
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || inputs.source_ref != '' && inputs.source_ref || 'refs/heads/main') || github.ref }}
         run: |
           set -euo pipefail
           tags=()
@@ -132,7 +136,7 @@ jobs:
         id: labels
         shell: bash
         env:
-          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || inputs.source_ref != '' && inputs.source_ref || 'refs/heads/main') || github.ref }}
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
@@ -185,7 +189,7 @@ jobs:
   # Build arm64 images (default + slim share the build stage cache)
   build-arm64:
     needs: [approve_manual_backfill]
-    if: ${{ always() && (github.event_name != 'workflow_dispatch' || needs.approve_manual_backfill.result == 'success') }}
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.tag == '' || needs.approve_manual_backfill.result == 'success') }}
     # WARNING: DO NOT REVERT THIS TO A BLACKSMITH RUNNER WITHOUT RE-VALIDATING TAG BACKFILLS.
     runs-on: ubuntu-24.04-arm
     permissions:
@@ -198,7 +202,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || inputs.source_ref != '' && inputs.source_ref || 'refs/heads/main') || github.ref }}
           fetch-depth: 0
 
       - name: Set up Docker Builder
@@ -216,7 +220,7 @@ jobs:
         shell: bash
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || inputs.source_ref != '' && inputs.source_ref || 'refs/heads/main') || github.ref }}
         run: |
           set -euo pipefail
           tags=()
@@ -249,7 +253,7 @@ jobs:
         id: labels
         shell: bash
         env:
-          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || inputs.source_ref != '' && inputs.source_ref || 'refs/heads/main') || github.ref }}
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
@@ -302,7 +306,7 @@ jobs:
   # Create multi-platform manifests
   create-manifest:
     needs: [approve_manual_backfill, build-amd64, build-arm64]
-    if: ${{ always() && needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success' && (github.event_name != 'workflow_dispatch' || needs.approve_manual_backfill.result == 'success') }}
+    if: ${{ always() && needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tag == '' || needs.approve_manual_backfill.result == 'success') }}
     # WARNING: DO NOT REVERT THIS TO A BLACKSMITH RUNNER WITHOUT RE-VALIDATING TAG BACKFILLS.
     runs-on: ubuntu-24.04
     permissions:
@@ -312,7 +316,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || inputs.source_ref != '' && inputs.source_ref || 'refs/heads/main') || github.ref }}
           fetch-depth: 0
 
       - name: Login to GitHub Container Registry
@@ -327,8 +331,8 @@ jobs:
         shell: bash
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
-          IS_MANUAL_BACKFILL: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+          SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || inputs.source_ref != '' && inputs.source_ref || 'refs/heads/main') || github.ref }}
+          IS_MANUAL_BACKFILL: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && '1' || '0' }}
         run: |
           set -euo pipefail
           tags=()
