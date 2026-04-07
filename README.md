@@ -1,5 +1,9 @@
 # 🦞 OpenClaw — Personal AI Assistant
 
+> Unofficial deployment mirror for Claw3D integration.
+> This is not the official OpenClaw repository.
+> Official upstream: https://github.com/openclaw/openclaw
+
 <p align="center">
     <picture>
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/openclaw/openclaw/main/docs/assets/openclaw-logo-text-dark.svg">
