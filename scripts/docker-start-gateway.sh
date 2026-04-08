@@ -7,6 +7,8 @@ set -eu
 #
 # - controlUi.allowedOrigins: accept any origin so Flycast hostnames pass the
 #   WebSocket origin check (the app is only reachable on the private network).
+# - controlUi.dangerouslyDisableDeviceAuth: allow the Claw3D server-side proxy
+#   to connect without device identity while preserving operator scopes.
 # - trustedProxies: mark the Fly proxy (172.16.0.0/12) and 6PN (fdaa::/16) as
 #   trusted so forwarded connections are treated as local.
 node dist/index.js config set --batch-json '[
@@ -14,6 +16,7 @@ node dist/index.js config set --batch-json '[
   {"path":"gateway.bind","value":"lan"},
   {"path":"gateway.controlUi.enabled","value":false},
   {"path":"gateway.controlUi.allowedOrigins","value":["*"]},
+  {"path":"gateway.controlUi.dangerouslyDisableDeviceAuth","value":true},
   {"path":"gateway.trustedProxies","value":["172.16.0.0/12","fdaa::/16"]}
 ]' >/dev/null
 
